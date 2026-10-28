@@ -1,0 +1,145 @@
+
+/*
+ * Agentic AI QA Automation — Dashboard Styles
+ *
+ * Defines the professional dark theme, reusable dashboard
+ * components, and responsive layouts.
+ *
+ * Future pixel-art animations will also live in this file.
+ */
+
+/* Global dashboard colors and typography. */
+:root {
+    --dashboard-bg: #0b1220;
+    --dashboard-panel: #162238;
+    --dashboard-border: #293750;
+    --dashboard-text: #e2e8f0;
+    --dashboard-muted: #94a3b8;
+    --dashboard-accent: #818cf8;
+    --dashboard-success: #4ade80;
+    --dashboard-error: #fb7185;
+}
+
+/* Apply the background across the entire NiceGUI page. */
+body {
+    background: var(--dashboard-bg) !important;
+    color: var(--dashboard-text);
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+/* Keep the dashboard centered on large displays. */
+.dashboard-container {
+    width: 100%;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 28px;
+}
+
+/* Style the application header. */
+.dashboard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.dashboard-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--dashboard-text);
+    letter-spacing: 0.5px;
+}
+
+.dashboard-subtitle {
+    color: var(--dashboard-muted);
+    font-size: 14px;
+}
+
+/* Reusable panel for metrics and workspace sections. */
+.dashboard-panel {
+    background: var(--dashboard-panel) !important;
+    border: 1px solid var(--dashboard-border);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: none;
+}
+
+.panel-heading {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--dashboard-text);
+}
+
+/* Responsive layout for regression metric cards. */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    width: 100%;
+}
+
+.metric-card {
+    background: #1d2b43 !important;
+    border: 1px solid var(--dashboard-border);
+    border-radius: 12px;
+    padding: 18px;
+    min-width: 0;
+}
+
+.metric-label {
+    font-size: 13px;
+    color: var(--dashboard-muted);
+}
+
+.metric-value {
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--dashboard-text);
+}
+
+.metric-passed {
+    color: var(--dashboard-success);
+}
+
+.metric-failed {
+    color: var(--dashboard-error);
+}
+
+.metric-duration {
+    color: #60a5fa;
+}
+
+/* Reserved workspace for the future walking pixel-art agent. */
+.agent-workspace {
+    min-height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed #425472;
+    border-radius: 12px;
+    background: #101b2e;
+    color: var(--dashboard-muted);
+}
+
+/* Stack metric cards on smaller screens. */
+@media (max-width: 900px) {
+    .metrics-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 540px) {
+    .dashboard-container {
+        padding: 14px;
+    }
+
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-title {
+        font-size: 22px;
+    }
+}
