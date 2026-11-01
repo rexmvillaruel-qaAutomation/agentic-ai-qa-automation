@@ -143,3 +143,324 @@ body {
         font-size: 22px;
     }
 }
+
+
+/*
+ * Pixel-Art Agent Workspace
+ *
+ * Four workstations are arranged in a responsive grid.
+ * The pixel agent walks between stations using CSS transitions.
+ */
+
+/* The workspace holds all agent workstations and the walking character. */
+.pixel-workspace {
+    position: relative;
+    width: 100%;
+    min-height: 260px;
+    padding: 24px 16px 70px;
+    background: #101b2e;
+    border: 1px solid #334766;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Keep the four workstations evenly distributed. */
+.workstation-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+}
+
+.workstation {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 125px;
+    padding: 12px 4px;
+    background: #1d2b43;
+    border: 1px solid #405374;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.workstation-icon {
+    font-size: 28px;
+}
+
+.workstation-name {
+    font-size: 12px;
+    color: #cbd5e1;
+    font-weight: 600;
+}
+
+
+/*
+ * Futuristic Pixel-Art Robot
+ *
+ * The idle state displays one transparent PNG.
+ * The walking state uses a six-frame horizontal sprite sheet.
+ * CSS transitions move the robot between workstation positions.
+ */
+
+.pixel-agent {
+    position: absolute;
+    left: 12.5%;
+    bottom: 20px;
+
+    width: 64px;
+    height: 64px;
+
+    background-image: url("/assets/robot_idle.png");
+    background-repeat: no-repeat;
+    background-position: 0 0;
+
+    /* Preserve the crisp edges of the pixel-art character. */
+    image-rendering: pixelated;
+
+    /* Center the robot horizontally beneath its workstation. */
+    transform: translateX(-50%);
+
+    /* Animate horizontal travel between workstations. */
+    transition: left 1.2s ease-in-out;
+}
+
+/* Switch to the walking sprite sheet while moving. */
+.pixel-agent.walking {
+    background-image: url("/assets/robot_walk.png");
+    animation: robot-walk 0.6s steps(6) infinite;
+}
+
+/* Each frame occupies 64px of the 384px-wide sprite sheet. */
+@keyframes robot-walk {
+    from {
+        background-position: 0 0;
+    }
+
+    to {
+        background-position: -384px 0;
+    }
+}
+
+/* Match the centers of the four workstation columns. */
+.pixel-agent.station-0 { left: 12.5%; }
+.pixel-agent.station-1 { left: 37.5%; }
+.pixel-agent.station-2 { left: 62.5%; }
+.pixel-agent.station-3 { left: 87.5%; }
+
+
+/* Keep the workspace usable on narrow screens. */
+@media (max-width: 600px) {
+    .pixel-workspace {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+
+    .workstation-grid {
+        gap: 5px;
+    }
+
+    .workstation {
+        padding: 8px 2px;
+        min-height: 110px;
+    }
+
+    .workstation-name {
+        font-size: 10px;
+    }
+}
+
+
+/*
+ * Futuristic QA Laboratory
+ *
+ * Each workstation represents a different stage of the
+ * automated testing and investigation workflow.
+ */
+
+/* Add a subtle grid pattern to the laboratory floor. */
+.pixel-workspace {
+    background-color: #101b2e;
+    background-image:
+        linear-gradient(
+            rgba(96, 165, 250, 0.04) 1px,
+            transparent 1px
+        ),
+        linear-gradient(
+            90deg,
+            rgba(96, 165, 250, 0.04) 1px,
+            transparent 1px
+        );
+    background-size: 24px 24px;
+}
+
+/* Establish the base styling for workstation monitors. */
+.workstation {
+    border: 2px solid #405374;
+    border-radius: 10px;
+    transition:
+        border-color 0.3s ease,
+        box-shadow 0.3s ease;
+}
+
+/* Execute: green testing station. */
+.workstation-execute {
+    border-color: #22c55e;
+    box-shadow: inset 0 0 20px rgba(34, 197, 94, 0.08);
+}
+
+.workstation-execute .workstation-icon {
+    color: #4ade80;
+}
+
+/* Analyze: blue results-analysis station. */
+.workstation-analyze {
+    border-color: #3b82f6;
+    box-shadow: inset 0 0 20px rgba(59, 130, 246, 0.08);
+}
+
+.workstation-analyze .workstation-icon {
+    color: #60a5fa;
+}
+
+/* Investigate: amber failure-investigation station. */
+.workstation-investigate {
+    border-color: #f59e0b;
+    box-shadow: inset 0 0 20px rgba(245, 158, 11, 0.08);
+}
+
+.workstation-investigate .workstation-icon {
+    color: #fbbf24;
+}
+
+/* Report: purple reporting station. */
+.workstation-report {
+    border-color: #a855f7;
+    box-shadow: inset 0 0 20px rgba(168, 85, 247, 0.08);
+}
+
+.workstation-report .workstation-icon {
+    color: #c084fc;
+}
+
+/* Add a glowing floor line beneath the walking robot. */
+.pixel-workspace::after {
+    content: "";
+    position: absolute;
+    left: 2%;
+    right: 2%;
+    bottom: 15px;
+    height: 3px;
+    background: linear-gradient(
+        90deg,
+        #22c55e,
+        #3b82f6,
+        #f59e0b,
+        #a855f7
+    );
+    opacity: 0.55;
+    border-radius: 4px;
+}
+
+
+/*
+ * Execute Work Animation
+ *
+ * The robot repeatedly moves its hands over a keyboard while
+ * performing the Execute task. The animation stops when the
+ * "working-execute" class is removed.
+ */
+
+.pixel-agent.working-execute {
+    background-image: url("/assets/robot_execute.png");
+    background-repeat: no-repeat;
+    animation: robot-typing 0.48s steps(4) infinite;
+}
+
+/* Advance through four 64px-wide sprite frames. */
+@keyframes robot-typing {
+    from {
+        background-position: 0 0;
+    }
+
+    to {
+        background-position: -256px 0;
+    }
+}
+
+
+/*
+ * Analyze Work Animation
+ *
+ * The robot scans Playwright results using a four-frame sprite.
+ * The animation continues until the working-analyze class is removed.
+ */
+
+.pixel-agent.working-analyze {
+    background-image: url("/assets/robot_analyze.png");
+    background-repeat: no-repeat;
+    animation: robot-analyzing 0.8s steps(4) infinite;
+}
+
+/* Advance through four 64px analysis frames. */
+@keyframes robot-analyzing {
+    from {
+        background-position: 0 0;
+    }
+
+    to {
+        background-position: -256px 0;
+    }
+}
+
+
+/*
+ * Investigate Work Animation
+ *
+ * The robot repeatedly examines a failure using a magnifying glass.
+ * Four sprite frames are played while the investigation is active.
+ */
+
+.pixel-agent.working-investigate {
+    background-image: url("/assets/robot_investigate.png");
+    background-repeat: no-repeat;
+    animation: robot-investigating 0.8s steps(4) infinite;
+}
+
+/* Cycle through four 64px investigation frames. */
+@keyframes robot-investigating {
+    from {
+        background-position: 0 0;
+    }
+
+    to {
+        background-position: -256px 0;
+    }
+}
+
+
+/*
+ * Report Work Animation
+ *
+ * The robot writes a test execution summary.
+ * Four frames progressively reveal lines on a document.
+ */
+
+.pixel-agent.working-report {
+    background-image: url("/assets/robot_report.png");
+    background-repeat: no-repeat;
+    animation: robot-reporting 0.8s steps(4) infinite;
+}
+
+/* Advance through four 64px report frames. */
+@keyframes robot-reporting {
+    from {
+        background-position: 0 0;
+    }
+
+    to {
+        background-position: -256px 0;
+    }
+}
