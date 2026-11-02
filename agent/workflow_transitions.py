@@ -1,6 +1,7 @@
 from agent.workflow_state import WorkflowState
 
 ALLOWED_TRANSITIONS = {
+    
     WorkflowState.IDLE: {
         WorkflowState.EXECUTING,
     },
