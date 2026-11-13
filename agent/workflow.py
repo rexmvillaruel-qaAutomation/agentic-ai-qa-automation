@@ -1,6 +1,7 @@
 from agent.workflow_state import WorkflowState
 from agent.workflow_manager import WorkflowStateManager
 from threading import Lock
+from agent.controller import run_regression_tests, JSON_REPORT
 
 
 ACTIVE_STATES = {
@@ -44,4 +45,28 @@ class WorkflowOrchestrator:
             return self.state_manager.transition_to(
             WorkflowState.EXECUTING
         )
+
+    def execute_regression(self) -> int | None:
+        if not self.try_start():
+            return None
+
+        try:
+   
+            exit_code = run_regression_tests()
+            
+            if not JSON_REPORT.is_file():
+                raise FileNotFoundError(
+                    f"Playwright JSON report missing: {JSON_REPORT}"
+                )
+
+            if not self.state_manager.transition_to(
+                WorkflowState.ANALYZING
+            ):
+                raise RuntimeError("Cannot transition to ANALYZING")
+
+            return exit_code
+
+        except Exception:
+            self.state_manager.transition_to(WorkflowState.ERROR)
+            raise
     
