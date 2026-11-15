@@ -5,6 +5,8 @@ from agent.workflow_state import WorkflowState
 from agent.workflow_manager import WorkflowStateManager
 from agent.controller import run_regression_tests, JSON_REPORT
 from agent.result_parser import parse_report
+from agent.failure_analyzer import classify_failure
+from agent.investigation_strategy import select_investigation_strategy
 
 
 # Define states where a workflow is actively processing.
@@ -51,27 +53,53 @@ class WorkflowOrchestrator:
         # None indicates that no report has been analyzed yet.
         self.report_summary = None
 
+        # Store recommended investigation plans for failed tests.
+        self.investigation_plans = None
+
+        # Store the final structured workflow result for the dashboard.
+        self.workflow_result = None
+
     def get_state(self) -> WorkflowState:
         """Return the current workflow state."""
 
         # Retrieve the state managed by WorkflowStateManager.
         return self.state_manager.get_state()
 
+    
     def try_start(self) -> bool:
-        """Attempt to start a new workflow execution."""
+        """
+        Attempt to start a new workflow execution.
 
-        # Protect the admission check and state transition.
+        Reject concurrent requests and reset previous execution
+        data only after a new workflow has been accepted.
+        """
+
+        # Protect the execution admission process.
         with self._admission_lock:
             current_state = self.get_state()
 
-            # Reject the request if a workflow is already active.
+            # Reject requests while another workflow is active.
             if not can_start_execution(current_state):
                 return False
 
-            # Reserve execution by transitioning to EXECUTING.
-            return self.state_manager.transition_to(
+            # Transition to EXECUTING before resetting previous results.
+            if not self.state_manager.transition_to(
                 WorkflowState.EXECUTING
-            )
+            ):
+                return False
+
+            # Clear the previous Playwright report summary.
+            self.report_summary = None
+
+            # Clear investigation plans from the previous execution.
+            self.investigation_plans = None
+
+            # Clear the previous final workflow result.
+            self.workflow_result = None
+
+            # Confirm that the new execution request was accepted.
+            return True
+
 
     def execute_regression(self) -> int | None:
         """Execute Playwright and prepare the workflow for analysis."""
@@ -131,3 +159,249 @@ class WorkflowOrchestrator:
 
             # Propagate the original exception for debugging.
             raise
+
+
+    def build_investigation_plans(self) -> list[dict]:
+        """
+        Classify failed tests and generate investigation plans.
+
+        This method reuses the parsed report summary instead of
+        reading the Playwright JSON report again.
+        """
+
+        # Generate investigation plans only during the INVESTIGATING stage.
+        if self.get_state() != WorkflowState.INVESTIGATING:
+            raise RuntimeError(
+                "Cannot build investigation plans outside INVESTIGATING state"
+            )
+
+        # Verify that the regression report has already been parsed.
+        if self.report_summary is None:
+            raise RuntimeError(
+                "Cannot build investigation plans without a report summary"
+            )
+
+        # Prepare a collection for investigation recommendations.
+        plans = []
+
+        # Process each failed test from the existing report summary.
+        for failure in self.report_summary["failures"]:
+
+            # Classify the failure using predefined error patterns.
+            classification = classify_failure(
+                failure["errors"]
+            )
+
+            # Select recommended actions for the identified failure.
+            actions = select_investigation_strategy(
+                classification
+            )
+
+            # Store the classification and recommended actions.
+            plans.append({
+                "test_name": failure["name"],
+                "project": failure["project"],
+                "classification": classification,
+                "errors": failure["errors"],
+                "actions": actions,
+            })
+
+        # Save investigation plans for later workflow stages.
+        self.investigation_plans = plans
+
+        # Return the generated investigation plans.
+        return plans
+
+
+    def advance_after_investigation(self) -> WorkflowState:
+        """
+        Move the workflow to REPORTING after investigation
+        plans have been generated successfully.
+        """
+
+        # Verify that the workflow is in the investigation stage.
+        if self.get_state() != WorkflowState.INVESTIGATING:
+            raise RuntimeError(
+                "Cannot advance outside INVESTIGATING state"
+            )
+
+        # Ensure that investigation planning has completed.
+        if self.investigation_plans is None:
+            raise RuntimeError(
+                "Investigation plans have not been generated"
+            )
+
+        # Transition to the reporting stage.
+        if not self.state_manager.transition_to(
+            WorkflowState.REPORTING
+        ):
+            raise RuntimeError(
+                "Cannot transition to REPORTING"
+            )
+
+        # Return the updated workflow state.
+        return self.get_state()
+
+
+    
+    def complete_reporting(self) -> dict:
+        """
+        Generate the final workflow result and mark processing complete.
+
+        If reporting fails after reaching REPORTING, transition
+        the workflow to ERROR and propagate the exception.
+        """
+
+        # Reject reporting requests from an invalid workflow state.
+        if self.get_state() != WorkflowState.REPORTING:
+            raise RuntimeError(
+                "Cannot complete workflow outside REPORTING state"
+            )
+
+        try:
+            # Verify that a parsed regression report is available.
+            if self.report_summary is None:
+                raise RuntimeError(
+                    "Cannot complete workflow without a report summary"
+                )
+
+            # Require investigation plans when failed tests are present.
+            if (
+                self.report_summary["failures"]
+                and self.investigation_plans is None
+            ):
+                raise RuntimeError(
+                    "Cannot complete reporting without investigation plans"
+                )
+
+            # Prepare a structured result for the NiceGUI dashboard.
+            final_result = {
+                "workflow_status": WorkflowState.COMPLETED.value,
+                "test_summary": self.report_summary,
+                "investigation_plans": self.investigation_plans or [],
+            }
+
+            # Transition to COMPLETED only after preparing the report.
+            if not self.state_manager.transition_to(
+                WorkflowState.COMPLETED
+            ):
+                raise RuntimeError(
+                    "Cannot transition to COMPLETED"
+                )
+
+            # Save the final result for future dashboard access.
+            self.workflow_result = final_result
+
+            # Return the completed workflow report.
+            return final_result
+
+        except Exception:
+            # Mark an active reporting failure as a workflow error.
+            self.state_manager.transition_to(WorkflowState.ERROR)
+
+            # Preserve the original exception for troubleshooting.
+            raise
+
+
+
+    def complete_partial_reporting(
+        self,
+        investigation_error: Exception
+    ) -> dict:
+        """
+        Preserve valid test results when investigation planning fails.
+
+        A workflow is PARTIALLY_COMPLETED only when a usable
+        partial report has been generated successfully.
+        """
+
+        # Allow recovery only when the investigation stage is active.
+        if self.get_state() != WorkflowState.INVESTIGATING:
+            raise RuntimeError(
+                "Cannot recover outside INVESTIGATING state"
+            )
+
+        # A valid parsed report is required for partial completion.
+        if self.report_summary is None:
+            raise RuntimeError(
+                "Cannot create partial report without test results"
+            )
+
+        try:
+            # Move to reporting to preserve available execution data.
+            if not self.state_manager.transition_to(
+                WorkflowState.REPORTING
+            ):
+                raise RuntimeError(
+                    "Cannot transition to REPORTING"
+                )
+
+            # Prepare a partial report with the investigation error.
+            partial_result = {
+                "workflow_status": WorkflowState.PARTIALLY_COMPLETED.value,
+                "test_summary": self.report_summary,
+                "investigation_plans": self.investigation_plans or [],
+                "failed_stage": WorkflowState.INVESTIGATING.value,
+                "investigation_error": (
+                    str(investigation_error)
+                    or type(investigation_error).__name__
+                ),
+            }
+
+            # Mark the workflow as partially completed.
+            if not self.state_manager.transition_to(
+                WorkflowState.PARTIALLY_COMPLETED
+            ):
+                raise RuntimeError(
+                    "Cannot transition to PARTIALLY_COMPLETED"
+                )
+
+            # Save the partial result for the dashboard.
+            self.workflow_result = partial_result
+
+            # Return the available workflow results.
+            return partial_result
+
+        except Exception:
+            # Mark the workflow as ERROR if partial reporting also fails.
+            self.state_manager.transition_to(WorkflowState.ERROR)
+
+            # Propagate the reporting exception for debugging.
+            raise
+
+
+
+    def advance_after_analysis(self) -> WorkflowState:
+        """
+        Select the next workflow stage based on parsed test results.
+
+        Failed tests require investigation planning.
+        Reports without failed tests proceed directly to reporting.
+        """
+
+        # Verify that the workflow is currently analyzing results.
+        if self.get_state() != WorkflowState.ANALYZING:
+            raise RuntimeError(
+                "Cannot advance workflow outside ANALYZING state"
+            )
+
+        # Ensure that the JSON report has already been parsed.
+        if self.report_summary is None:
+            raise RuntimeError(
+                "Cannot advance workflow without a report summary"
+            )
+
+        # Choose the next workflow state based on failed test records.
+        if self.report_summary["failures"]:
+            next_state = WorkflowState.INVESTIGATING
+        else:
+            next_state = WorkflowState.REPORTING
+
+        # Validate and perform the workflow state transition.
+        if not self.state_manager.transition_to(next_state):
+            raise RuntimeError(
+                f"Cannot transition to {next_state.value}"
+            )
+
+        # Return the updated state for the calling component.
+        return self.get_state()
