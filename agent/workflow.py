@@ -405,3 +405,59 @@ class WorkflowOrchestrator:
 
         # Return the updated state for the calling component.
         return self.get_state()
+
+
+
+    def run_workflow(self) -> dict | None:
+        """
+        Coordinate the complete Playwright regression workflow.
+
+        Return the final workflow result when processing finishes.
+        Return None when a new execution request is rejected.
+        """
+
+        # Execute Playwright and reject duplicate execution requests.
+        # The controller returns an integer exit code when accepted.
+        exit_code = self.execute_regression()
+
+        # None indicates that another workflow is already active.
+        if exit_code is None:
+            return None
+
+        try:
+            # Parse and validate the generated Playwright JSON report.
+            self.analyze_report()
+
+            # Choose INVESTIGATING or REPORTING based on test failures.
+            next_state = self.advance_after_analysis()
+
+            # Generate investigation recommendations only when needed.
+            if next_state == WorkflowState.INVESTIGATING:
+                try:
+                    # Classify failures and generate rule-based plans.
+                    self.build_investigation_plans()
+
+                    # Move to REPORTING after investigation planning.
+                    self.advance_after_investigation()
+
+                except Exception as investigation_error:
+                    # Preserve valid test results if investigation fails.
+                    # The recovery method produces a partial report.
+                    return self.complete_partial_reporting(
+                        investigation_error
+                    )
+
+            # Generate the final report and mark the workflow COMPLETED.
+            return self.complete_reporting()
+
+        except Exception:
+            # Move an unfinished workflow to ERROR on unrecoverable failure.
+            # Existing stage methods may have already set ERROR.
+            if self.get_state() in ACTIVE_STATES:
+                self.state_manager.transition_to(
+                    WorkflowState.ERROR
+                )
+
+            # Preserve the original exception for troubleshooting.
+            raise
+

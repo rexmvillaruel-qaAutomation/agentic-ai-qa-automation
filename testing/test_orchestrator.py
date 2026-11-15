@@ -943,3 +943,133 @@ class TestWorkflowOrchestrator(unittest.TestCase):
 
         # Verify that no successful final report was generated.
         self.assertIsNone(self.orchestrator.workflow_result)
+
+
+
+    def test_run_workflow_completes_without_failures(self):
+        # Prepare a regression summary where all tests passed.
+        sample_summary = {
+            "passed": 3,
+            "failed": 0,
+            "skipped": 0,
+            "flaky": 0,
+            "duration_ms": 1500,
+            "failures": [],
+        }
+
+        # Mock the controller, JSON report, and parser.
+        # This prevents real Playwright execution during unit testing.
+        with patch(
+            "agent.workflow.run_regression_tests",
+            return_value=0
+        ) as mock_controller, patch(
+            "agent.workflow.JSON_REPORT"
+        ) as mock_report, patch(
+            "agent.workflow.parse_report",
+            return_value=sample_summary
+        ) as mock_parser:
+
+            # Simulate an existing JSON report.
+            mock_report.is_file.return_value = True
+
+            # Execute the complete workflow through one method.
+            result = self.orchestrator.run_workflow()
+
+            # Verify that the controller and parser ran once.
+            mock_controller.assert_called_once()
+            mock_parser.assert_called_once()
+
+            # Verify successful workflow completion.
+            self.assertEqual(
+                result["workflow_status"],
+                "COMPLETED"
+            )
+
+            # Verify that no investigation plans were needed.
+            self.assertEqual(
+                result["investigation_plans"],
+                []
+            )
+
+            # Verify the final workflow state.
+            self.assertEqual(
+                self.orchestrator.get_state(),
+                WorkflowState.COMPLETED
+            )
+
+            # Verify that the result was saved.
+            self.assertEqual(
+                self.orchestrator.workflow_result,
+                result
+            )
+
+
+    def test_run_workflow_completes_with_failed_tests(self):
+        # Prepare a regression summary containing one failed test.
+        sample_summary = {
+            "passed": 2,
+            "failed": 1,
+            "skipped": 0,
+            "flaky": 0,
+            "duration_ms": 1500,
+            "failures": [
+                {
+                    "name": "Checkout button test",
+                    "project": "chromium",
+                    "errors": [
+                        "locator.click: Timeout 30000ms exceeded"
+                    ],
+                }
+            ],
+        }
+
+        # Mock Playwright execution and JSON report parsing.
+        with patch(
+            "agent.workflow.run_regression_tests",
+            return_value=1
+        ) as mock_controller, patch(
+            "agent.workflow.JSON_REPORT"
+        ) as mock_report, patch(
+            "agent.workflow.parse_report",
+            return_value=sample_summary
+        ) as mock_parser:
+
+            # Simulate a generated JSON report.
+            mock_report.is_file.return_value = True
+
+            # Execute the full workflow automatically.
+            result = self.orchestrator.run_workflow()
+
+            # Verify that the controller and parser executed once.
+            mock_controller.assert_called_once()
+            mock_parser.assert_called_once()
+
+            # Verify that the workflow completed despite test failures.
+            self.assertEqual(
+                result["workflow_status"],
+                "COMPLETED"
+            )
+
+            # Verify that the original failed test is preserved.
+            self.assertEqual(
+                result["test_summary"]["failed"],
+                1
+            )
+
+            # Verify that investigation recommendations were generated.
+            self.assertEqual(
+                len(result["investigation_plans"]),
+                1
+            )
+
+            # Verify the correct deterministic failure classification.
+            self.assertEqual(
+                result["investigation_plans"][0]["classification"],
+                "LOCATOR_TIMEOUT"
+            )
+
+            # Verify that the workflow reached its terminal state.
+            self.assertEqual(
+                self.orchestrator.get_state(),
+                WorkflowState.COMPLETED
+            )
