@@ -177,3 +177,91 @@ class TestWorkflowOrchestrator(unittest.TestCase):
 
         # Verify that Playwright controller was called only once.
             mock_controller.assert_called_once()
+    
+    def test_analyze_report_returns_summary(self):
+        # Start the workflow and transition to EXECUTING.
+        self.assertTrue(self.orchestrator.try_start())
+
+        # Move the workflow to the ANALYZING state.
+        self.assertTrue(
+            self.orchestrator.state_manager.transition_to(
+                WorkflowState.ANALYZING
+            )
+        )
+
+        # Prepare a sample Playwright regression summary.
+        sample_summary = {
+            "passed": 3,
+            "failed": 1,
+            "skipped": 0,
+            "flaky": 0,
+            "duration_ms": 1500,
+            "failures": [
+                {
+                    "name": "Checkout test",
+                    "project": "chromium",
+                    "errors": ["Assertion failed"],
+                }
+            ],
+        }
+
+        # Mock the parser to avoid reading the actual JSON report.
+        with patch(
+            "agent.workflow.parse_report",
+            return_value=sample_summary
+        ) as mock_parser:
+
+            # Execute report analysis through the orchestrator.
+            result = self.orchestrator.analyze_report()
+
+            # Verify that the parser was called exactly once.
+            mock_parser.assert_called_once()
+
+            # Verify that the returned summary matches the expected data.
+            self.assertEqual(result, sample_summary)
+
+            # Verify that the orchestrator stores the parsed summary.
+            self.assertEqual(
+                self.orchestrator.report_summary,
+                sample_summary
+            )
+
+            # Verify that the workflow remains in ANALYZING.
+            self.assertEqual(
+                self.orchestrator.get_state(),
+                WorkflowState.ANALYZING
+            )
+    
+    def test_analyze_report_failure_sets_error_state(self):
+        # Start the workflow.
+        self.assertTrue(self.orchestrator.try_start())
+
+        # Move the workflow to ANALYZING.
+        self.assertTrue(
+            self.orchestrator.state_manager.transition_to(
+                WorkflowState.ANALYZING
+            )
+        )
+
+        # Simulate a parsing failure caused by an invalid report.
+        with patch(
+            "agent.workflow.parse_report",
+            side_effect=ValueError("Invalid Playwright report")
+        ) as mock_parser:
+
+            # Verify that the parser exception is propagated.
+            with self.assertRaises(ValueError):
+                self.orchestrator.analyze_report()
+
+            # Verify that the parser was called exactly once.
+            mock_parser.assert_called_once()
+
+            # Verify that no report summary was stored.
+            self.assertIsNone(self.orchestrator.report_summary)
+
+            # Verify that the workflow enters ERROR state.
+            self.assertEqual(
+                self.orchestrator.get_state(),
+                WorkflowState.ERROR
+            )
+

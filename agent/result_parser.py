@@ -31,18 +31,70 @@ def collect_tests(suites):
 
 
 def parse_report():
-    """Read a Playwright JSON report and return a summary."""
-    if not JSON_REPORT.exists():
-        raise FileNotFoundError(f"JSON report not found: {JSON_REPORT}")
+    
+    """Read, validate, and summarize a Playwright JSON report."""
 
+    # Verify that the JSON report exists before reading it.
+    if not JSON_REPORT.is_file():
+        raise FileNotFoundError(
+            f"JSON report not found: {JSON_REPORT}"
+        )
+
+    # Load the JSON report from the filesystem.
     with JSON_REPORT.open("r", encoding="utf-8") as file:
         report = json.load(file)
 
-    stats = report.get("stats", {})
-    tests = collect_tests(report.get("suites", []))
+    # Verify that the report contains a JSON object.
+    if not isinstance(report, dict):
+        raise ValueError("Invalid Playwright report: expected a JSON object")
+
+    # Retrieve the required report sections.
+    stats = report.get("stats")
+    suites = report.get("suites")
+
+    # Reject reports with missing or incorrect section types.
+    if not isinstance(stats, dict):
+        raise ValueError("Invalid Playwright report: missing stats")
+
+    if not isinstance(suites, list):
+        raise ValueError("Invalid Playwright report: missing suites")
+
+    # Verify that the required execution statistics are present.
+    required_stats = (
+        "expected",
+        "unexpected",
+        "skipped",
+        "flaky",
+        "duration",
+    )
+
+    for field in required_stats:
+        if field not in stats:
+            raise ValueError(
+                f"Invalid Playwright report: missing statistic '{field}'"
+            )
+
+        # Reject non-numeric execution statistics.
+        value = stats[field]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or value < 0
+        ):
+            raise ValueError(
+                f"Invalid Playwright report: invalid statistic '{field}'"
+            )
+
+    # Collect all tests from nested Playwright suites.
+    tests = collect_tests(suites)
+
+    # Reject reports that contain no test entries.
+    if not tests:
+        raise ValueError("Invalid Playwright report: no tests found")
 
     failures = []
 
+    # Extract error messages from unexpectedly failed tests.
     for test in tests:
         if test["status"] == "unexpected":
             errors = []
@@ -57,12 +109,13 @@ def parse_report():
                 "errors": errors,
             })
 
+    # Return a consistent summary for the workflow orchestrator.
     return {
-        "passed": stats.get("expected", 0),
-        "failed": stats.get("unexpected", 0),
-        "skipped": stats.get("skipped", 0),
-        "flaky": stats.get("flaky", 0),
-        "duration_ms": stats.get("duration", 0),
+        "passed": stats["expected"],
+        "failed": stats["unexpected"],
+        "skipped": stats["skipped"],
+        "flaky": stats["flaky"],
+        "duration_ms": stats["duration"],
         "failures": failures,
     }
 
